@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"antegr.al/chatanium-bot/v1/modules/MusicBot/util"
-	"antegr.al/chatanium-bot/v1/src/Util/Log"
 	"github.com/lrstanley/go-ytdlp"
+	"github.com/thirdscam/chatanium-musicbot/util"
+	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
 type Youtube struct{}

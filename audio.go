@@ -6,9 +6,9 @@ import (
 	Url "net/url"
 	"os"
 
-	"antegr.al/chatanium-bot/v1/src/Util/Log"
 	"github.com/bwmarrin/discordgo"
 	"github.com/jogramming/dca"
+	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
 const MUSIC_PATH = "./.musicbot"

@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	Provider "antegr.al/chatanium-bot/v1/modules/MusicBot/provider"
-	"antegr.al/chatanium-bot/v1/modules/MusicBot/util"
-	"antegr.al/chatanium-bot/v1/src/Backends/Discord/Interface/Slash"
-	"antegr.al/chatanium-bot/v1/src/Util/Log"
 	"github.com/bwmarrin/discordgo"
+	Provider "github.com/thirdscam/chatanium-musicbot/provider"
+	"github.com/thirdscam/chatanium-musicbot/util"
+	"github.com/thirdscam/chatanium/src/Backends/Discord/Interface/Slash"
+	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
 var MANIFEST_VERSION = 1

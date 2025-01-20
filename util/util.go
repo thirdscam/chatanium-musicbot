@@ -7,7 +7,7 @@ import (
 	"os"
 	"path"
 
-	"antegr.al/chatanium-bot/v1/src/Util/Log"
+	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
 func Str2Int64(s string) int64 {
