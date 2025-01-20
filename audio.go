@@ -2,198 +2,249 @@ package main
 
 import (
 	"bufio"
-	"encoding/binary"
 	"io"
-	"os/exec"
-	"strconv"
+	Url "net/url"
+	"os"
 
 	"antegr.al/chatanium-bot/v1/src/Util/Log"
 	"github.com/bwmarrin/discordgo"
-	"layeh.com/gopus"
+	"github.com/jogramming/dca"
 )
 
-// NOTE: This API is not final and these are likely to change.
+const MUSIC_PATH = "./.musicbot"
 
-// Technically the below settings can be adjusted however that poses
-// a lot of other problems that are not handled well at this time.
-// These below values seem to provide the best overall performance
-const (
-	channels  int = 2                   // 1 for mono, 2 for stereo
-	frameRate int = 48000               // audio sampling rate
-	frameSize int = 960                 // uint16 size of each audio frame
-	maxBytes  int = (frameSize * 2) * 2 // max size of opus data
-)
+// MusicID is a unique identifier for a music.
+// It is used to download file name as MusicID.
+//
+// recommended to use hash of the URL as key.
+type MusicID string
 
-var (
-	speakers    map[uint32]*gopus.Decoder
-	opusEncoder *gopus.Encoder
-)
-
-// SendPCM will receive on the provied channel encode
-// received PCM data into Opus then send that to Discordgo
-func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
-	if pcm == nil {
-		return
+// DownloadMusic() downloads the music from the given URL and returns the path to the downloaded file.
+//
+// key is used to generate the file name, so it must be unique.
+func DownloadMusic(rawURL string, musicId MusicID) error {
+	// 1. check if the music file already exists.
+	if isExistMusic(musicId) {
+		return nil
 	}
 
-	var err error
+	// 2. Create a directory to store the music files.
+	makeDirectory()
 
-	opusEncoder, err = gopus.NewEncoder(frameRate, channels, gopus.Audio)
+	// 3. Check if the URL is valid
+	_, err := Url.ParseRequestURI(rawURL)
 	if err != nil {
-		Log.Verbose.Println("[MusicBot/Internal] gopus encoder Error.")
-		return
+		Log.Error.Printf("[MusicBot] Failed to parse URL: %v", err)
+		return err
 	}
 
-	for {
-		// read pcm from chan, exit if channel is closed.
-		recv, ok := <-pcm
-		if !ok {
-			Log.Verbose.Println("[MusicBot/Internal] PCM channel closed.")
-			return
-		}
+	// 4. Create a file to store the music file.
+	file, err := os.Create(getMusicPath(musicId))
+	if err != nil {
+		Log.Error.Printf("[MusicBot] Failed to create file: %v", err)
+		return err
+	}
 
-		// try encoding pcm frame with Opus
-		opus, err := opusEncoder.Encode(recv, frameSize, maxBytes)
-		if err != nil {
-			Log.Verbose.Printf("[MusicBot/Internal] gopus encoder Error: %v", err)
-			return
-		}
+	// 5. Download the music file.
+	ok, err := download(rawURL, file)
+	if err != nil {
+		Log.Error.Printf("[MusicBot] Failed to download file: %v", err)
+		return err
+	}
 
-		if !v.Ready || v.OpusSend == nil {
-			// OnError(fmt.Sprintf("Discordgo not ready for opus packets. %+v : %+v", v.Ready, v.OpusSend), nil)
-			// Sending errors here might not be suited
-			return
-		}
-		// send encoded opus data to the sendOpus channel
-		v.OpusSend <- opus
+	// 6. waiting for the download stream to be first buffer written
+	<-ok
+
+	return nil
+}
+
+// Remove music from the local storage.
+//
+// use it when the music file is no longer needed.
+func RemoveMusic(musicId MusicID) {
+	err := os.Remove(getMusicPath(musicId))
+	if err != nil {
+		Log.Error.Printf("[MusicBot] Failed to remove file: %v", err)
 	}
 }
 
-// ReceivePCM will receive on the the Discordgo OpusRecv channel and decode
-// the opus audio into PCM then send it on the provided channel.
-func ReceivePCM(v *discordgo.VoiceConnection, c chan *discordgo.Packet) {
-	if c == nil {
-		return
+// PlayMusic plays the music file to the given voice channel.
+//
+// It returns an error if the music file is not found.
+// so it must be checked before called DownloadMusic().
+func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID) error {
+	// Get file stream
+	file, err := os.Open(getMusicPath(musicId))
+	if err != nil {
+		Log.Error.Printf("[MusicBot] Failed to open file: %v", err)
+		return err
+	}
+	defer file.Close()
+
+	// Get opus audio from the file
+	decoder := dca.NewDecoder(file)
+
+	// Play the music
+	done := make(chan error)
+	dca.NewStream(decoder, dgv, done)
+	err = <-done
+	if err != nil && err != io.EOF {
+		Log.Error.Printf("[MusicBot] Failed to play music: %v", err)
 	}
 
-	var err error
+	Log.Verbose.Printf("[MusicBot] End!")
+	return nil
+}
 
-	for {
-		if !v.Ready || v.OpusRecv == nil {
-			Log.Verbose.Printf("[MusicBot/Internal] Discordgo not ready for opus packets. %+v : %+v", v.Ready, v.OpusSend)
-			return
+// make directory from MUSIC_PATH.
+// if it doesn't exist, create it.
+func makeDirectory() error {
+	if _, err := os.Stat(MUSIC_PATH); os.IsNotExist(err) {
+		err := os.MkdirAll(MUSIC_PATH, 0o755)
+		if err != nil {
+			Log.Error.Fatalf("[MusicBot] Failed to create directory: %v", err)
 		}
+	}
 
-		p, ok := <-v.OpusRecv
-		if !ok {
-			return
-		}
+	return nil
+}
 
-		if speakers == nil {
-			speakers = make(map[uint32]*gopus.Decoder)
-		}
+// get music file path from MUSIC_PATH.
+func getMusicPath(musicId MusicID) string {
+	return MUSIC_PATH + "/" + string(musicId)
+}
 
-		_, ok = speakers[p.SSRC]
-		if !ok {
-			speakers[p.SSRC], err = gopus.NewDecoder(48000, 2)
-			if err != nil {
-				Log.Verbose.Printf("[MusicBot/Internal] gopus decoder Error: %s", err)
-				continue
+// check if the music file exists.
+func isExistMusic(musicId MusicID) bool {
+	path := MUSIC_PATH + "/" + string(musicId)
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	} else if err != nil {
+		Log.Verbose.Printf("[MusicBot] File not found: %v", err)
+	}
+	return true
+}
+
+func download(rawURL string, file *os.File) (chan bool, error) {
+	Log.Verbose.Println(rawURL)
+
+	// 1. Get file path
+	encodeSession, err := dca.EncodeFile(rawURL, dca.StdEncodeOptions)
+	if err != nil {
+		Log.Error.Printf("[MusicBot] Failed to encode file: %v", err)
+		return nil, err
+	}
+
+	// 2. Create a buffer to read ffmpeg output and write to file
+	reader := bufio.NewReader(encodeSession)
+	writer := bufio.NewWriter(file)
+
+	// 3. Start encode session
+	isWriting := make(chan bool)
+	go func() {
+		chunkCnt := 0
+		for {
+			buf := make([]byte, 4096)
+			n, err := reader.Read(buf)
+			if err != nil { // session is closed
+				file.Close()
+				encodeSession.Cleanup()
+				if err == io.EOF {
+					return
+				}
+				Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Read Error: %v", err)
+				return
 			}
-		}
 
-		p.PCM, err = speakers[p.SSRC].Decode(p.Opus, 960, false)
-		if err != nil {
-			Log.Verbose.Printf("[MusicBot/Internal] Error decoding opus data: %s", err)
-			continue
-		}
+			_, err = writer.Write(buf[:n])
+			if err != nil {
+				Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Write Error: %v", err)
+				return
+			}
 
-		c <- p
-	}
+			err = writer.Flush()
+			if err != nil {
+				Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Flush Error: %v", err)
+				return
+			}
+
+			// if the first write is done, send the signal to the channel
+			if chunkCnt == 5 {
+				Log.Verbose.Printf("[MusicBot/Internal] Buffer Received.")
+				isWriting <- true
+			}
+
+			chunkCnt++
+		}
+	}()
+
+	return isWriting, nil
 }
 
-// PlayAudioFile will play the given filename to the already connected
-// Discord voice server/channel.  voice websocket and udp socket
-// must already be setup before this will work.
-func PlayAudioFile(v *discordgo.VoiceConnection, filename string, stop <-chan bool) {
-	// Create a shell command "object" to run.
-	run := exec.Command(
-		"ffmpeg",
-		"-i", filename,
-		"-f", "s16le",
-		"-reconnect", "1",
-		"-reconnect_at_eof", "1",
-		"-reconnect_streamed", "1",
-		"-reconnect_delay_max", "10",
-		"-vn",
-		"-ar", strconv.Itoa(frameRate),
-		"-ac", strconv.Itoa(channels),
-		"-blocksize", "8192",
-		"pipe:1")
-	ffmpegout, err := run.StdoutPipe()
-	if err != nil {
-		Log.Verbose.Printf("[MusicBot/Internal] StdoutPipe Error: %v", err)
-		return
-	}
+// func download(file *os.File, url string) (chan bool, error) {
+// 	// 1. Create a shell command "object" to run.
+// 	run := exec.Command(
+// 		"ffmpeg",
+// 		"-i", url,
+// 		"-f", "s16le",
+// 		"-reconnect", "1",
+// 		"-reconnect_at_eof", "1",
+// 		"-reconnect_streamed", "1",
+// 		"-reconnect_delay_max", "3",
+// 		"-vn",
+// 		"-ar", strconv.Itoa(frameRate),
+// 		"-ac", strconv.Itoa(channels),
+// 		"-blocksize", "8192",
+// 		"pipe:1")
+// 	ffmpegout, err := run.StdoutPipe()
+// 	if err != nil {
+// 		Log.Verbose.Printf("[MusicBot/Internal] StdoutPipe Error: %v", err)
+// 		return nil, err
+// 	}
 
-	ffmpegbuf := bufio.NewReaderSize(ffmpegout, 16384)
+// 	// 1-1. prevent memory leak from residual ffmpeg streams
+// 	defer run.Process.Kill()
 
-	// Starts the ffmpeg command
-	err = run.Start()
-	if err != nil {
-		Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Start Error: %v", err)
-		return
-	}
+// 	// 2. create buffer to read ffmpeg output and write to file
+// 	ffmpegReader := bufio.NewReaderSize(ffmpegout, 16384)
+// 	fileWriter := bufio.NewWriter(file)
 
-	// prevent memory leak from residual ffmpeg streams
-	defer run.Process.Kill()
+// 	// 3. Starts the ffmpeg command
+// 	err = run.Start()
+// 	if err != nil {
+// 		Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Start Error: %v", err)
+// 		return nil, err
+// 	}
 
-	// when stop is sent, kill ffmpeg
-	go func() {
-		<-stop
-		err = run.Process.Kill()
-	}()
+// 	isWriting := make(chan bool)
 
-	// Send "speaking" packet over the voice websocket
-	err = v.Speaking(true)
-	if err != nil {
-		Log.Verbose.Printf("[MusicBot/Internal] Couldn't start speaking: %v", err)
-	}
+// 	// 4. read ffmpeg buffer and write to file
+// 	go func() {
+// 		isFirstWritten := false
+// 		for {
+// 			buf := make([]byte, 4096)
+// 			n, err := ffmpegReader.Read(buf)
+// 			if err != nil {
+// 				if err == io.EOF {
+// 					return
+// 				}
+// 				Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Read Error: %v", err)
+// 				return
+// 			}
+// 			_, err = fileWriter.Write(buf[:n])
+// 			if err != nil {
+// 				Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Write Error: %v", err)
+// 				return
+// 			}
 
-	// Send not "speaking" packet over the websocket when we finish
-	defer func() {
-		err := v.Speaking(false)
-		if err != nil {
-			Log.Verbose.Printf("[MusicBot/Internal] Couldn't stop speaking: %v", err)
-		}
-	}()
+// 			// if the first write is done, send the signal to the channel
+// 			if !isFirstWritten {
+// 				isWriting <- true
+// 				isFirstWritten = true
+// 			}
+// 		}
+// 	}()
 
-	send := make(chan []int16, 2)
-	defer close(send)
-
-	close := make(chan bool)
-	go func() {
-		SendPCM(v, send)
-		close <- true
-	}()
-
-	for {
-		// read data from ffmpeg stdout
-		audiobuf := make([]int16, frameSize*channels)
-		err = binary.Read(ffmpegbuf, binary.LittleEndian, &audiobuf)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return
-		}
-		if err != nil {
-			Log.Verbose.Printf("[MusicBot/Internal] Error reading from ffmpeg stdout: %v", err)
-			return
-		}
-
-		// Send received PCM to the sendPCM channel
-		select {
-		case send <- audiobuf:
-		case <-close:
-			return
-		}
-	}
-}
+// 	return isWriting, nil
+// }
