@@ -91,7 +91,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "**Adding song to queue...**\nThe first playback of the queue might take a while.",
+			Content: "**Adding song to queue...**\nIf you enter a playlist, it might take a while for the entire contents to import.",
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
@@ -140,11 +140,21 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	Log.Verbose.Printf("[MusicBot] Joined voice channel: %s", channelID)
 
 	// Download the music
-	if err := DownloadMusic(m.RawUrl, MusicID(m.Id)); err != nil {
-		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: util.Str2ptr("**Failed to download music.**\nPlease try again."),
-		})
-		return
+	// if err := DownloadMusic(m.RawUrl, MusicID(m.Id)); err != nil {
+	// 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+	// 		Content: util.Str2ptr("**Failed to download music.**\nPlease try again."),
+	// 	})
+	// 	return
+	// }
+
+	for j, v := range m {
+		if err := DownloadMusic(v.RawUrl, MusicID(v.Id)); err != nil {
+			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Content: util.Str2ptr("**Failed to download music.**\nPlease try again."),
+			})
+			return
+		}
+		Log.Verbose.Printf("[MusicBot] Downloaded music: %s (%d/%d)", v.Title, j+1, len(m))
 	}
 
 	// Add the music to the queue
@@ -152,12 +162,17 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		musicQueue[channelID] = state{queue: []Provider.Music{}}
 	}
 	musicQueue[channelID] = state{
-		queue: append(musicQueue[channelID].queue, m),
+		queue: append(musicQueue[channelID].queue, m...),
 		skip:  musicQueue[channelID].skip,
 	}
 
 	newRespMsg := new(string)
-	*newRespMsg = fmt.Sprintf("**Added to queue!**\n-> **%s**", m.Title)
+	for j, v := range m {
+		newRespMsg = util.Str2ptr(fmt.Sprintf("**Added to queue!**\n-> **%s**", v.Title))
+		if j != len(m)-1 {
+			newRespMsg = util.Str2ptr(fmt.Sprintf("%s\n-> **%s**", *newRespMsg, m[j+1].Title))
+		}
+	}
 
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: newRespMsg,
