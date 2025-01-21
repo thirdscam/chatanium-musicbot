@@ -70,8 +70,19 @@ type state struct {
 
 var musicQueue map[string]state = make(map[string]state)
 
+var providers map[string]Provider.Interface = make(map[string]Provider.Interface)
+
 func Start() {
 	Log.Verbose.Println("[MusicBot] Initializing...")
+
+	providers = Provider.GetProviders()
+
+	for k, v := range providers {
+		Log.Verbose.Printf("[MusicBot] Starting provider: %s", k)
+		v.Start()
+	}
+
+	Log.Verbose.Println("[MusicBot] Initialized.")
 }
 
 func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -154,7 +165,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Play the music
 	if len(musicQueue[channelID].queue) <= 1 {
-		playMusic(s, dgv, channelID)
+		playMusic(s, dgv)
 	}
 }
 
@@ -206,7 +217,7 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Queue is empty!"),
+				Content: "Queue is empty!",
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
@@ -241,33 +252,37 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	})
 }
 
-func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection, channel string) {
+func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	// Check if the queue is empty
-	if len(musicQueue[channel].queue) == 0 {
+	if len(musicQueue[dgv.ChannelID].queue) == 0 {
 		err := dgv.Disconnect()
 		if err != nil {
 			Log.Warn.Printf("[MusicBot] Failed to disconnect from voice channel: %v", err)
 		}
+
+		RemoveStatusEmbed(s, dgv.ChannelID)
 		return
 	}
 
-	// Send a message to the channel
-	s.ChannelMessageSend(channel, fmt.Sprintf("Now playing\n-> **%s**", musicQueue[channel].queue[0].Title))
-
-	Log.Verbose.Printf("[MusicBot] Started!")
+	// Set a message to the channel
+	SetStatusEmbed(s, dgv.ChannelID, EmbedState{
+		Title:        musicQueue[dgv.ChannelID].queue[0].Title,
+		ThumbnailUrl: musicQueue[dgv.ChannelID].queue[0].RawUrl,
+	})
 
 	// Start playing the music
-	musicId := MusicID(musicQueue[channel].queue[0].Id)
+	Log.Verbose.Printf("[MusicBot] Started!")
+	musicId := MusicID(musicQueue[dgv.ChannelID].queue[0].Id)
 	PlayMusic(dgv, musicId)
 	RemoveMusic(musicId)
 
 	// Remove the first element from the queue
-	queueState := musicQueue[channel]
+	queueState := musicQueue[dgv.ChannelID]
 	queueState.queue = queueState.queue[1:]
-	musicQueue[channel] = queueState
+	musicQueue[dgv.ChannelID] = queueState
 
 	// Play the next song
-	playMusic(s, dgv, channel)
+	playMusic(s, dgv)
 }
 
 func getJoinedVoiceChannel(s *discordgo.Session, guildID, userID string) string {
