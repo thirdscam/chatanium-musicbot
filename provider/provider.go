@@ -5,9 +5,18 @@ type Music struct {
 	Title  string
 	RawUrl string
 	Type   string
+
+	ThumbnailUrl string
+	Duration     string
 }
 
 type Interface interface {
 	Start()
 	GetByQuery(query string) (Music, error)
+}
+
+func GetProviders() map[string]Interface {
+	return map[string]Interface{
+		"youtube": &Youtube{},
+	}
 }
