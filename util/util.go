@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"math/big"
+	Url "net/url"
 	"os"
 	"path"
 
@@ -37,4 +38,27 @@ func GetSha256Hash(s string) string {
 
 func Str2ptr(s string) *string {
 	return &s
+}
+
+func IsUrl(url string) bool {
+	_, err := Url.ParseRequestURI(url)
+	return err == nil
+}
+
+func IsYoutubeUrl(url string) bool {
+	u, err := Url.ParseRequestURI(url)
+	if err != nil {
+		return false
+	}
+
+	return u.Host == "www.youtube.com"
+}
+
+func IsYoutubePlaylist(url string) bool {
+	u, err := Url.ParseRequestURI(url)
+	if err != nil {
+		return false
+	}
+
+	return u.Host == "www.youtube.com" && u.Path == "/playlist"
 }

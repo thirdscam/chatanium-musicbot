@@ -12,7 +12,7 @@ type Music struct {
 
 type Interface interface {
 	Start()
-	GetByQuery(query string) (Music, error)
+	GetByQuery(query string) ([]Music, error)
 }
 
 func GetProviders() map[string]Interface {

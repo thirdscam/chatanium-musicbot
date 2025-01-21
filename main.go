@@ -140,13 +140,6 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	Log.Verbose.Printf("[MusicBot] Joined voice channel: %s", channelID)
 
 	// Download the music
-	// if err := DownloadMusic(m.RawUrl, MusicID(m.Id)); err != nil {
-	// 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-	// 		Content: util.Str2ptr("**Failed to download music.**\nPlease try again."),
-	// 	})
-	// 	return
-	// }
-
 	for j, v := range m {
 		if err := DownloadMusic(v.RawUrl, MusicID(v.Id)); err != nil {
 			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
