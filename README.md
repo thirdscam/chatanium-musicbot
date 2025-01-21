@@ -1,3 +1,4 @@
+# Chatanium MusicBot
 ## Summary
 This Chatanium bot module enables music playback within voice channels.
 
