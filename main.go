@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	Provider "github.com/thirdscam/chatanium-musicbot/provider"
@@ -140,15 +141,25 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	Log.Verbose.Printf("[MusicBot] Joined voice channel: %s", channelID)
 
 	// Download the music
-	for j, v := range m {
-		if err := DownloadMusic(v.RawUrl, MusicID(v.Id)); err != nil {
-			s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-				Content: util.Str2ptr("**Failed to download music.**\nPlease try again."),
-			})
-			return
+	isReady := make(chan bool) // check first music is ready
+	go func() {
+		for j, v := range m {
+			// download the music
+			if err := DownloadMusic(v.RawUrl, MusicID(v.Id)); err != nil {
+				s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+					Content: util.Str2ptr("**Failed to download music.**\nPlease try again."),
+				})
+				return
+			}
+			Log.Verbose.Printf("[MusicBot] (%d/%d) Downloaded music: %s", j+1, len(m), v.Title)
+
+			if j == 0 {
+				// if the first music is ready, send the message
+				isReady <- true
+			}
 		}
-		Log.Verbose.Printf("[MusicBot] Downloaded music: %s (%d/%d)", v.Title, j+1, len(m))
-	}
+	}()
+	<-isReady // wait for the first music to be downloaded
 
 	// Add the music to the queue
 	if _, ok := musicQueue[channelID]; !ok {
@@ -163,7 +174,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	for j, v := range m {
 		newRespMsg = util.Str2ptr(fmt.Sprintf("**Added to queue!**\n-> **%s**", v.Title))
 		if j != len(m)-1 {
-			newRespMsg = util.Str2ptr(fmt.Sprintf("%s\n-> **%s**", *newRespMsg, m[j+1].Title))
+			*newRespMsg += fmt.Sprintf("%s\n-> **%s**", *newRespMsg, m[j+1].Title)
 		}
 	}
 
@@ -290,6 +301,7 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	musicQueue[dgv.ChannelID] = queueState
 
 	// Play the next song
+	time.Sleep(3 * time.Second)
 	playMusic(s, dgv)
 }
 

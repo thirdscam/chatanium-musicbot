@@ -42,10 +42,12 @@ func (y *Youtube) Start() {
 func (y *Youtube) GetByQuery(query string) ([]Music, error) {
 	// check if the query is a playlist or video URL
 	if util.IsYoutubeUrl(query) {
+		Log.Verbose.Printf("[MusicBot] Query is a URL: %s", query)
 		return getUrl(query)
 	}
 
 	// else, search for the query
+	Log.Verbose.Printf("[MusicBot] Query is a search: %s", query)
 	return getSearch(query)
 }
 
@@ -60,10 +62,11 @@ func getSearch(query string) ([]Music, error) {
 
 	return []Music{
 		{
-			Id:     result[0],
-			Title:  result[1],
-			RawUrl: result[2],
-			Type:   "youtube",
+			Id:           "YT:" + util.GetSha256Hash(result[0]),
+			Title:        result[1],
+			RawUrl:       result[2],
+			ThumbnailUrl: result[3],
+			Type:         "youtube",
 		},
 	}, nil
 }
@@ -78,17 +81,23 @@ func getUrl(url string) ([]Music, error) {
 	execResult := strings.Split(string(r), "\n")
 	result := []Music{}
 
-	for i := 0; i < len(result); i += 3 {
-		if i+2 >= len(execResult) {
-			Log.Warn.Println("[MusicBot] Failed to parse result partially: result length is not a multiple of 3")
+	for i := 0; i < len(execResult); i += 4 {
+		if i+3 > len(execResult) {
+			Log.Verbose.Println("[MusicBot] Failed to parse result partially: result length is not a multiple of 4")
 			break
 		}
+
 		result = append(result, Music{
-			Id:     execResult[i],
-			Title:  execResult[i+1],
-			RawUrl: execResult[i+2],
-			Type:   "youtube",
+			Id:           "YT:" + util.GetSha256Hash(execResult[i]),
+			Title:        execResult[i+1],
+			RawUrl:       execResult[i+2],
+			ThumbnailUrl: execResult[i+3],
+			Type:         "youtube",
 		})
+	}
+
+	if len(result) == 0 {
+		Log.Verbose.Println("[MusicBot] cannot find result")
 	}
 
 	return result, nil
