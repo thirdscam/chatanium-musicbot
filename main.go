@@ -68,7 +68,7 @@ var DEFINE_SLASHCMD = Slash.Commands{
 	}: Pause,
 	{
 		Name:        "skip",
-		Description: "Resume music",
+		Description: "Skip music",
 	}: Skip,
 }
 

@@ -33,9 +33,9 @@ func (y *Youtube) Start() {
 	}
 
 	if string(beforeVersion) == string(atferVersion) {
-		Log.Info.Printf("[MusicBot] yt-dlp is already up to date. (v.%s)", string(beforeVersion)[:len(beforeVersion)-1])
+		Log.Info.Printf("[MusicBot] yt-dlp is already up to date. (v.%s)", strings.TrimSuffix(string(beforeVersion), "\n"))
 	} else {
-		Log.Info.Printf("[MusicBot] yt-dlp updated: %s => %s", string(beforeVersion)[:len(beforeVersion)-1], string(atferVersion)[:len(atferVersion)-1])
+		Log.Info.Printf("[MusicBot] yt-dlp updated: %s => %s", strings.TrimSuffix(string(beforeVersion), "\n"), strings.TrimSuffix(string(atferVersion), "\n"))
 	}
 }
 
@@ -78,10 +78,14 @@ func getUrl(url string) ([]Music, error) {
 		return nil, err
 	}
 
-	execResult := strings.Split(string(r), "\n")
+	execResult := strings.Split(strings.TrimSuffix(string(r), "\n"), "\n")
 	result := []Music{}
 
 	for i := 0; i < len(execResult); i += 4 {
+		if execResult[i] == "" { // last line (N+1) is always empty
+			break
+		}
+
 		if i+3 > len(execResult) {
 			Log.Verbose.Println("[MusicBot] Failed to parse result partially: result length is not a multiple of 4")
 			break
