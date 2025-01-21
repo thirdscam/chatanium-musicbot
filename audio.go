@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	Url "net/url"
 	"os"
@@ -72,8 +73,8 @@ func RemoveMusic(musicId MusicID) {
 //
 // It returns an error if the music file is not found.
 // so it must be checked before called DownloadMusic().
-func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID) error {
-	// Get file stream
+func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool, stop chan bool) error {
+	// Open the music file
 	file, err := os.Open(getMusicPath(musicId))
 	if err != nil {
 		Log.Error.Printf("[MusicBot] Failed to open file: %v", err)
@@ -81,18 +82,49 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID) error {
 	}
 	defer file.Close()
 
-	// Get opus audio from the file
+	// Create a decoder for the audio file
 	decoder := dca.NewDecoder(file)
 
-	// Play the music
+	// Start streaming the audio to the voice connection
 	done := make(chan error)
-	dca.NewStream(decoder, dgv, done)
-	err = <-done
-	if err != nil && err != io.EOF {
-		Log.Error.Printf("[MusicBot] Failed to play music: %v", err)
-	}
+	stream := dca.NewStream(decoder, dgv, done)
 
-	Log.Verbose.Printf("[MusicBot] End!")
+	// Variable to keep track of the pause state
+	isPaused := false
+
+	// Start a goroutine to handle pause/resume control
+	go func() {
+		for {
+			select {
+			case <-pause:
+				// Toggle the pause state
+				isPaused = !isPaused
+				stream.SetPaused(isPaused)
+				if isPaused {
+					Log.Verbose.Println("[MusicBot] Music paused")
+				} else {
+					Log.Verbose.Println("[MusicBot] Music resumed")
+				}
+			case err := <-done:
+				// Handle end of stream or errors
+				if errors.Is(err, io.EOF) {
+					Log.Verbose.Println("[MusicBot] Playback finished")
+				} else if err != nil && !errors.Is(err, dca.ErrVoiceConnClosed) {
+					Log.Error.Printf("[MusicBot] Stream error: %v", err)
+				}
+				return
+			case <-stop:
+				stream.SetPaused(true) // Pause the stream
+				Log.Verbose.Println("[MusicBot] Playback stopped. (skipped)")
+				done <- io.EOF
+				return
+			}
+		}
+	}()
+	// Wait until streaming is done
+	<-done
+
+	Log.Verbose.Println("[MusicBot] Playback ended.")
 	return nil
 }
 

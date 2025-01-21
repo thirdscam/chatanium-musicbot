@@ -62,10 +62,19 @@ var DEFINE_SLASHCMD = Slash.Commands{
 		Name:        "queue",
 		Description: "Show queue",
 	}: Queue,
+	{
+		Name:        "pause",
+		Description: "Pause/Resume music",
+	}: Pause,
+	{
+		Name:        "skip",
+		Description: "Resume music",
+	}: Skip,
 }
 
 type state struct {
 	queue []Provider.Music
+	pause chan bool
 	skip  chan bool
 }
 
@@ -271,6 +280,86 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	})
 }
 
+func Pause(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
+	if channelID == "" {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Failed to find voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	completed := make(chan bool)
+	go func() {
+		musicQueue[channelID].pause <- true
+		completed <- true
+	}()
+
+	select {
+	case <-time.After(3 * time.Second):
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Failed to pause/resume music.**",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+
+	case <-completed:
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Music paused/resumed.**",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+	}
+}
+
+func Skip(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
+	if channelID == "" {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Failed to find voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	completed := make(chan bool)
+	go func() {
+		musicQueue[channelID].skip <- true
+		completed <- true
+	}()
+
+	select {
+	case <-time.After(3 * time.Second):
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Failed to skip music.**",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+
+	case <-completed:
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Music skipped.**",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+	}
+}
+
 func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	// Check if the queue is empty
 	if len(musicQueue[dgv.ChannelID].queue) == 0 {
@@ -289,19 +378,28 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 		ThumbnailUrl: musicQueue[dgv.ChannelID].queue[0].RawUrl,
 	})
 
-	// Start playing the music
-	Log.Verbose.Printf("[MusicBot] Started!")
+	// Get the music ID
 	musicId := MusicID(musicQueue[dgv.ChannelID].queue[0].Id)
-	PlayMusic(dgv, musicId)
-	RemoveMusic(musicId)
 
 	// Remove the first element from the queue
 	queueState := musicQueue[dgv.ChannelID]
 	queueState.queue = queueState.queue[1:]
+
+	// create pause/resume or skip channel
+	pause := make(chan bool)
+	stop := make(chan bool)
+	queueState.pause = pause
+	queueState.skip = stop
+
 	musicQueue[dgv.ChannelID] = queueState
 
+	// Start playing the music
+	Log.Verbose.Printf("[MusicBot] Started!")
+	PlayMusic(dgv, musicId, pause, stop)
+	RemoveMusic(musicId)
+
 	// Play the next song
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 	playMusic(s, dgv)
 }
 
