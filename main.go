@@ -202,7 +202,15 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	index := util.Str2Int64(i.ApplicationCommandData().Options[0].StringValue())
 	Log.Verbose.Printf("[MusicBot] Dequeue: %d", index)
 
-	if _, ok := musicQueue[i.ChannelID]; !ok {
+	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
+	if channelID == "" {
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: util.Str2ptr("**Failed to check voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again."),
+		})
+		return
+	}
+
+	if _, ok := musicQueue[channelID]; !ok {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -214,11 +222,11 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Check if the index is valid
-	if index < 0 || index >= int64(len(musicQueue[i.ChannelID].queue)) {
+	if index < 0 || index >= int64(len(musicQueue[channelID].queue)) {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Invalid index! (Queue Length: %d)", len(musicQueue[i.ChannelID].queue)),
+				Content: fmt.Sprintf("Invalid index! (Queue Length: %d)", len(musicQueue[channelID].queue)),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
@@ -229,19 +237,27 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("Removing: **#%d** - %s", index, musicQueue[i.ChannelID].queue[index].Title),
+			Content: fmt.Sprintf("Removing: **#%d** - %s", index, musicQueue[channelID].queue[index].Title),
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 
 	// Remove the music from the queue
-	queueState := musicQueue[i.ChannelID]
+	queueState := musicQueue[channelID]
 	queueState.queue = append(queueState.queue[:index], queueState.queue[index+1:]...)
-	musicQueue[i.ChannelID] = queueState
+	musicQueue[channelID] = queueState
 }
 
 func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if _, ok := musicQueue[i.ChannelID]; !ok {
+	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
+	if channelID == "" {
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: util.Str2ptr("**Failed to check voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again."),
+		})
+		return
+	}
+
+	if _, ok := musicQueue[channelID]; !ok {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -253,7 +269,7 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Check if the queue is empty
-	if len(musicQueue[i.ChannelID].queue) == 0 {
+	if len(musicQueue[channelID].queue) == 0 {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -266,7 +282,7 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Create a message to send
 	queueMessage := "Queue:\n"
-	for i, music := range musicQueue[i.ChannelID].queue {
+	for i, music := range musicQueue[channelID].queue {
 		queueMessage += fmt.Sprintf("**#%d** - %s\n", i, music.Title)
 	}
 
