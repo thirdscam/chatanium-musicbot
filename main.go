@@ -174,10 +174,10 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if _, ok := musicQueue[channelID]; !ok {
 		musicQueue[channelID] = state{queue: []Provider.Music{}}
 	}
-	musicQueue[channelID] = state{
-		queue: append(musicQueue[channelID].queue, m...),
-		skip:  musicQueue[channelID].skip,
-	}
+
+	queueState := musicQueue[channelID]
+	queueState.queue = append(queueState.queue, m...)
+	musicQueue[channelID] = queueState
 
 	newRespMsg := new(string)
 	for j, v := range m {
@@ -193,6 +193,10 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Play the music
 	if len(musicQueue[channelID].queue) <= 1 {
+		queueState := musicQueue[channelID]
+		queueState.pause = make(chan bool)
+		queueState.skip = make(chan bool)
+		musicQueue[channelID] = queueState
 		playMusic(s, dgv)
 	}
 }
@@ -399,11 +403,6 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 
 	// Get the music queue state
 	queueState := musicQueue[dgv.ChannelID]
-
-	// create pause/resume or skip channel
-	queueState.pause = make(chan bool)
-	queueState.skip = make(chan bool)
-	musicQueue[dgv.ChannelID] = queueState
 
 	// Start playing the music
 	Log.Verbose.Printf("[MusicBot] Started!")
