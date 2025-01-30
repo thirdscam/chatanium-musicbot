@@ -381,9 +381,8 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	// Get the music ID
 	musicId := MusicID(musicQueue[dgv.ChannelID].queue[0].Id)
 
-	// Remove the first element from the queue
+	// Get the music queue state
 	queueState := musicQueue[dgv.ChannelID]
-	queueState.queue = queueState.queue[1:]
 
 	// create pause/resume or skip channel
 	pause := make(chan bool)
@@ -397,6 +396,9 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	Log.Verbose.Printf("[MusicBot] Started!")
 	PlayMusic(dgv, musicId, pause, stop)
 	RemoveMusic(musicId)
+
+	// Remove the first element from the queue
+	queueState.queue = queueState.queue[1:]
 
 	// Play the next song
 	time.Sleep(1 * time.Second)
