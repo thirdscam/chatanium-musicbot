@@ -6,6 +6,7 @@ import (
 	"io"
 	Url "net/url"
 	"os"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/jogramming/dca"
@@ -109,7 +110,16 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool,
 				// Handle end of stream or errors
 				if errors.Is(err, io.EOF) {
 					Log.Verbose.Println("[MusicBot] Playback finished")
-				} else if err != nil && !errors.Is(err, dca.ErrVoiceConnClosed) {
+				} else if errors.Is(err, dca.ErrVoiceConnClosed) {
+					Log.Warn.Println("[MusicBot] Voice connection closed. trying to reconnect...")
+
+					// Reconnect to the voice channel
+					stream.SetPaused(true)
+					time.Sleep(2 * time.Second)
+					stream.SetPaused(false)
+
+					continue
+				} else if err != nil {
 					Log.Error.Printf("[MusicBot] Stream error: %v", err)
 				}
 				return
