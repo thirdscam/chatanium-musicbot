@@ -206,6 +206,17 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	index := util.Str2Int64(i.ApplicationCommandData().Options[0].StringValue())
 	Log.Verbose.Printf("[MusicBot] Dequeue: %d", index)
 
+	if index <= 0 {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Invalid index!**\nOnly positive integers are allowed.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
 	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
 	if channelID == "" {
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
@@ -218,7 +229,7 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Invalid index! (Queue Length: %d)", 0),
+				Content: fmt.Sprintf("**Invalid index!** (Queue Length: %d)", 0),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
@@ -230,7 +241,7 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: fmt.Sprintf("Invalid index! (Queue Length: %d)", len(musicQueue[channelID].queue)),
+				Content: fmt.Sprintf("**Invalid index!** (Queue Length: %d)", len(musicQueue[channelID].queue)),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
