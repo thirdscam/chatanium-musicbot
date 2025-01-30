@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/lrstanley/go-ytdlp"
 	"github.com/thirdscam/chatanium-musicbot/util"
@@ -37,6 +38,29 @@ func (y *Youtube) Start() {
 	} else {
 		Log.Info.Printf("[MusicBot] yt-dlp updated: %s => %s", strings.TrimSuffix(string(beforeVersion), "\n"), strings.TrimSuffix(string(atferVersion), "\n"))
 	}
+
+	go func() {
+		for {
+			// update yt-dlp every 12 hours
+			time.Sleep(12 * time.Hour)
+			err = exec.Command(util.GetYtdlpPath(), "-U", "--quiet", "--no-warnings").Run()
+			if err != nil {
+				Log.Error.Printf("[MusicBot] Failed to update yt-dlp: %v", err)
+			}
+
+			atferVersion, err = exec.Command(util.GetYtdlpPath(), "--version", "--quiet", "--no-warnings").Output()
+			if err != nil {
+				Log.Error.Printf("[MusicBot] Failed to get yt-dlp version: %v", err)
+			}
+
+			if string(beforeVersion) == string(atferVersion) {
+				Log.Info.Printf("[MusicBot] yt-dlp auto-updated: %s => %s", strings.TrimSuffix(string(beforeVersion), "\n"), strings.TrimSuffix(string(atferVersion), "\n"))
+				beforeVersion = atferVersion // overwrite the version
+			} else {
+				Log.Verbose.Printf("[MusicBot] yt-dlp is already up to date. (v.%s)", strings.TrimSuffix(string(atferVersion), "\n"))
+			}
+		}
+	}()
 }
 
 func (y *Youtube) GetByQuery(query string) ([]Music, error) {
