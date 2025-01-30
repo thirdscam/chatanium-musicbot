@@ -51,7 +51,7 @@ func IsYoutubeUrl(url string) bool {
 		return false
 	}
 
-	return u.Host == "www.youtube.com"
+	return u.Host == "www.youtube.com" || u.Host == "youtube.com" || u.Host == "youtu.be"
 }
 
 func IsYoutubePlaylist(url string) bool {
