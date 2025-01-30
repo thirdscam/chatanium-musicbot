@@ -52,7 +52,7 @@ func (y *Youtube) GetByQuery(query string) ([]Music, error) {
 }
 
 func getSearch(query string) ([]Music, error) {
-	exec := exec.Command(util.GetYtdlpPath(), fmt.Sprintf("ytsearch:'%s'", query), "--quiet", "--no-warnings", "--skip-download", "--format=bestaudio/best", "-O", "id,title,url,thumbnail")
+	exec := exec.Command(util.GetYtdlpPath(), fmt.Sprintf("ytsearch:'%s (Lyrics)'", query), "--quiet", "--no-warnings", "--skip-download", "--format=bestaudio/best", "-O", "id,title,url,thumbnail")
 	r, err := exec.Output()
 	if err != nil {
 		return nil, err

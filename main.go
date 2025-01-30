@@ -205,7 +205,7 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
 	if channelID == "" {
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: util.Str2ptr("**Failed to check voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again."),
+			Content: util.Str2ptr("**Failed to find voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again."),
 		})
 		return
 	}
@@ -252,7 +252,7 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
 	if channelID == "" {
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: util.Str2ptr("**Failed to check voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again."),
+			Content: util.Str2ptr("**Failed to find voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again."),
 		})
 		return
 	}
@@ -401,20 +401,18 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	queueState := musicQueue[dgv.ChannelID]
 
 	// create pause/resume or skip channel
-	pause := make(chan bool)
-	stop := make(chan bool)
-	queueState.pause = pause
-	queueState.skip = stop
-
+	queueState.pause = make(chan bool)
+	queueState.skip = make(chan bool)
 	musicQueue[dgv.ChannelID] = queueState
 
 	// Start playing the music
 	Log.Verbose.Printf("[MusicBot] Started!")
-	PlayMusic(dgv, musicId, pause, stop)
+	PlayMusic(dgv, musicId, queueState.pause, queueState.skip)
 	RemoveMusic(musicId)
 
 	// Remove the first element from the queue
-	queueState.queue = queueState.queue[1:]
+	queueState.queue = musicQueue[dgv.ChannelID].queue[1:]
+	musicQueue[dgv.ChannelID] = queueState
 
 	// Play the next song
 	time.Sleep(1 * time.Second)
