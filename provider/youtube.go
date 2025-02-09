@@ -87,7 +87,8 @@ func getSearch(query string) ([]Music, error) {
 		return nil, fmt.Errorf("no results found or invalid query (len() < 4)")
 	}
 
-	if util.IsUrl(result[2]) || util.IsUrl(result[3]) {
+	isVaildUrl := util.IsUrl(result[2]) && util.IsUrl(result[3])
+	if !isVaildUrl {
 		return nil, fmt.Errorf("invalid query response (invaild url)")
 	}
 
@@ -121,7 +122,8 @@ func getUrl(url string) ([]Music, error) {
 			break
 		}
 
-		if util.IsUrl(execResult[i+2]) || util.IsUrl(execResult[i+3]) {
+		isVaildUrl := util.IsUrl(execResult[i+2]) && util.IsUrl(execResult[i+3])
+		if !isVaildUrl {
 			return nil, fmt.Errorf("invalid query response (invaild url)")
 		}
 

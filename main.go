@@ -133,6 +133,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Get the music
 	m, err := provider.GetByQuery(query)
 	if err != nil {
+		Log.Verbose.Printf("[MusicBot] Failed to query music: %s", err)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: util.Str2ptr("**Failed to query music.**\nPlease try again or input another query."),
 		})
@@ -142,6 +143,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Join the voice channel
 	dgv, err := s.ChannelVoiceJoin(i.GuildID, channelID, false, true)
 	if err != nil {
+		Log.Verbose.Printf("[MusicBot] Failed to join voice channel: %s", err)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: util.Str2ptr("**Failed to join voice channel.** (maybe not your fault)\nPlease try again."),
 		})
