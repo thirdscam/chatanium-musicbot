@@ -3,6 +3,7 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	Url "net/url"
 	"os"
@@ -11,13 +12,13 @@ import (
 	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
-func Str2Int64(s string) int64 {
+func Str2Int64(s string) (int64, error) {
 	n := new(big.Int)
 	n, ok := n.SetString(s, 10)
 	if !ok {
-		Log.Error.Printf("[MusicBot] Failed to convert ID: %v", s)
+		return -1, fmt.Errorf("failed to convert ID: %v", s)
 	}
-	return n.Int64()
+	return n.Int64(), nil
 }
 
 func GetYtdlpPath() string {

@@ -207,14 +207,24 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Get the index of the music to remove
-	index := util.Str2Int64(i.ApplicationCommandData().Options[0].StringValue())
+	index, err := util.Str2Int64(i.ApplicationCommandData().Options[0].StringValue())
+	if err != nil { // if the index is not a number
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "**Invalid index!**\nOnly positive integers are allowed.\n(Did you put something other than a number?)",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
 	Log.Verbose.Printf("[MusicBot] Dequeue: %d", index)
 
 	if index <= 0 {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "**Invalid index!**\nOnly positive integers are allowed.",
+				Content: "**Invalid index!**\nOnly positive integers are allowed.\n(The 0th song is the currently playing song, so you should use /skip)",
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
