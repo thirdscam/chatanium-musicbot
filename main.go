@@ -312,6 +312,11 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Create a message to send
 	queueMessage := "Queue:\n"
 	for i, music := range musicQueue[channelID].queue {
+		if i == 0 { // if the music is the currently playing music
+			queueMessage += fmt.Sprintf("**Now Playing: %s**\n", music.Title)
+			continue
+		}
+
 		queueMessage += fmt.Sprintf("**#%d** - %s\n", i, music.Title)
 	}
 
@@ -435,11 +440,23 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	// Start playing the music
 	Log.Verbose.Printf("[MusicBot] Started!")
 	PlayMusic(dgv, musicId, queueState.pause, queueState.skip)
-	RemoveMusic(musicId)
 
 	// Remove the first element from the queue
 	queueState.queue = musicQueue[dgv.ChannelID].queue[1:]
 	musicQueue[dgv.ChannelID] = queueState
+
+	// Ignore removing songs after scanning if the same song is in the queue
+	isDupilcated := false
+	for _, each := range musicQueue[dgv.ChannelID].queue {
+		if MusicID(each.Id) == musicId {
+			isDupilcated = true
+			break
+		}
+	}
+
+	if !isDupilcated {
+		RemoveMusic(musicId)
+	}
 
 	// Play the next song
 	time.Sleep(1 * time.Second)
