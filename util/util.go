@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
@@ -37,10 +38,6 @@ func GetSha256Hash(s string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func Str2ptr(s string) *string {
-	return &s
-}
-
 func IsUrl(url string) bool {
 	_, err := Url.ParseRequestURI(url)
 	return err == nil
@@ -62,4 +59,20 @@ func IsYoutubePlaylist(url string) bool {
 	}
 
 	return u.Host == "www.youtube.com" && u.Path == "/playlist"
+}
+
+func EphemeralResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
+func EditResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: &content,
+	})
 }
