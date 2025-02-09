@@ -83,6 +83,13 @@ func getSearch(query string) ([]Music, error) {
 	}
 
 	result := strings.Split(string(r), "\n")
+	if len(result) < 4 {
+		return nil, fmt.Errorf("no results found or invalid query (len() < 4)")
+	}
+
+	if util.IsUrl(result[2]) || util.IsUrl(result[3]) {
+		return nil, fmt.Errorf("invalid query response (invaild url)")
+	}
 
 	return []Music{
 		{
@@ -105,9 +112,17 @@ func getUrl(url string) ([]Music, error) {
 	execResult := strings.Split(strings.TrimSuffix(string(r), "\n"), "\n")
 	result := []Music{}
 
+	if len(execResult) < 4 {
+		return nil, fmt.Errorf("no results found or invalid query (len() < 4)")
+	}
+
 	for i := 0; i < len(execResult); i += 4 {
 		if execResult[i] == "" { // last line (N+1) is always empty
 			break
+		}
+
+		if util.IsUrl(execResult[i+2]) || util.IsUrl(execResult[i+3]) {
+			return nil, fmt.Errorf("invalid query response (invaild url)")
 		}
 
 		if i+3 > len(execResult) {

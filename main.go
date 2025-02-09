@@ -101,7 +101,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "**Adding song to queue...**\nIf you enter a playlist, it might take a while for the entire contents to import.",
+			Content: "**Adding song to queue...**\nIf you enter a playlist, it might take a while for the entire contents to import.\n(The first song will automatically play when it's ready.)",
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
@@ -166,6 +166,8 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 				// if the first music is ready, send the message
 				isReady <- true
 			}
+
+			time.Sleep(time.Second * 10) // wait 10 seconds (prevent rate limit)
 		}
 	}()
 	<-isReady // wait for the first music to be downloaded
