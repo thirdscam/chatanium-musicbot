@@ -93,10 +93,13 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool,
 	// Variable to keep track of the pause state
 	isPaused := false
 
-	// Start a goroutine to handle pause/resume control
+	// Make thread of the music player
 	go func() {
 		for {
+			// Awaiting control signals (pause, stop, etc.)
 			select {
+
+			// pause signal actually toggle the pause state (can be paused/resumed)
 			case <-pause:
 				// Toggle the pause state
 				isPaused = !isPaused
@@ -106,31 +109,38 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool,
 				} else {
 					Log.Verbose.Println("[MusicBot] Music resumed")
 				}
+
+			// done signal to stop the music player
 			case err := <-done:
+				// TODO(refactor): simplify this code (not use else if statement)
 				// Handle end of stream or errors
 				if errors.Is(err, io.EOF) {
 					Log.Verbose.Println("[MusicBot] Playback finished")
 				} else if errors.Is(err, dca.ErrVoiceConnClosed) {
 					Log.Warn.Println("[MusicBot] Voice connection closed. trying to reconnect...")
 
-					// Reconnect to the voice channel
+					// For unknown reasons, the channel's voice connection sometimes closes.
+					// However, it will reconnect automatically after a few seconds, so wait about 2 seconds.
 					stream.SetPaused(true)
 					time.Sleep(2 * time.Second)
 					stream.SetPaused(false)
 
+					// continue to wait for the next signal (resume the music)
 					continue
 				} else if err != nil {
 					Log.Error.Printf("[MusicBot] Stream error: %v", err)
 				}
 				return
+
 			case <-stop:
 				stream.SetPaused(true) // Pause the stream
 				Log.Verbose.Println("[MusicBot] Playback stopped. (skipped)")
-				done <- io.EOF
+				done <- io.EOF // Send EOF to indicate the end of stream
 				return
 			}
 		}
 	}()
+
 	// Wait until streaming is done
 	<-done
 

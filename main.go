@@ -136,7 +136,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	Log.Verbose.Printf("[MusicBot] Joined voice channel: %s", channelID)
 
-	// Download the music
+	// Music download thread
 	isReady := make(chan bool) // check first music is ready
 	go func() {
 		for j, v := range m {
@@ -178,7 +178,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			continue
 		}
 
-		newRespMsg += fmt.Sprintf("%s\n-> **%s**", newRespMsg, v.Title)
+		newRespMsg += fmt.Sprintf("%s\n-> %s", newRespMsg, v.Title)
 	}
 
 	// Send the response message
@@ -199,24 +199,27 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	Log.Verbose.Printf("[MusicBot] Dequeue: %d", index)
 
+	// Check if index <= 0 (0th song is the currently playing song)
 	if index <= 0 {
 		util.EphemeralResponse(s, i, "**Invalid index!**\nOnly positive integers are allowed.\n(The 0th song is the currently playing song, so you should use /skip)")
 		return
 	}
 
+	// Get the channel ID of the voice channel
 	channelID := getJoinedVoiceChannel(s, i.GuildID, i.Member.User.ID)
 	if channelID == "" {
 		util.EditResponse(s, i, "**Failed to find voice channel.** (or you're not in a voice channel)\nPlease rejoin the voice channel and try again.")
 		return
 	}
 
+	// Check if the queue is empty
 	if _, ok := musicQueue[channelID]; !ok {
-		util.EphemeralResponse(s, i, fmt.Sprintf("**Invalid index!** (Queue Length: %d)", 0))
+		util.EphemeralResponse(s, i, "**Cannot find queue!**\nPlease play a song first.")
 		return
 	}
 
-	// Check if the index is valid
-	if index < 0 || index >= int64(len(musicQueue[channelID].queue)) {
+	// Check if index is out of queue length
+	if index >= int64(len(musicQueue[channelID].queue)) {
 		util.EphemeralResponse(s, i, fmt.Sprintf("**Invalid index!** (Queue Length: %d)", len(musicQueue[channelID].queue)))
 		return
 	}
@@ -237,14 +240,9 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if _, ok := musicQueue[channelID]; !ok {
-		util.EphemeralResponse(s, i, "Queue is empty!")
-		return
-	}
-
-	// Check if the queue is empty
-	if len(musicQueue[channelID].queue) == 0 {
-		util.EphemeralResponse(s, i, "Queue is empty!")
+	// Check if the queue is not created or empty
+	if _, ok := musicQueue[channelID]; !ok || len(musicQueue[channelID].queue) == 0 {
+		util.EphemeralResponse(s, i, "**Queue is empty!**\nPlease play a song first.")
 		return
 	}
 
@@ -269,18 +267,22 @@ func Pause(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	completed := make(chan bool)
+	// Music player control thread
+	completed := make(chan bool) // check the thread is completed
 	go func() {
+		// Send pause/resume command to the music player thread
 		musicQueue[channelID].pause <- true
+
+		// Wait for the music player control finishes
 		completed <- true
 	}()
 
 	select {
-	case <-time.After(3 * time.Second):
-		util.EphemeralResponse(s, i, "**Failed to pause/resume music.**")
+	case <-time.After(3 * time.Second): // if the music player control thread doesn't finish in 3 seconds
+		util.EphemeralResponse(s, i, "**Failed to pause/resume music.**\nPlease try again. (If the problem persists, please contact the developer.)")
 		Log.Warn.Println("[MusicBot] Failed to pause/resume music. (channel timeout)")
 
-	case <-completed:
+	case <-completed: // if the music player control thread finishes (successfully paused/resumed)
 		util.EphemeralResponse(s, i, "**Music paused/resumed.**")
 	}
 }
@@ -292,17 +294,22 @@ func Skip(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	// Music player control thread
 	completed := make(chan bool)
 	go func() {
+		// Send skip command to the music player thread
 		musicQueue[channelID].skip <- true
+
+		// Wait for the music player control finishes
 		completed <- true
 	}()
 
 	select {
-	case <-time.After(3 * time.Second):
-		util.EphemeralResponse(s, i, "**Failed to skip music.**")
+	case <-time.After(3 * time.Second): // if the music player control thread doesn't finish in 3 seconds
+		util.EphemeralResponse(s, i, "**Failed to skip music.**\nPlease try again. (If the problem persists, please contact the developer.)")
+		Log.Warn.Println("[MusicBot] Failed to skip music. (channel timeout)")
 
-	case <-completed:
+	case <-completed: // if the music player control thread finishes (successfully skipped)
 		util.EphemeralResponse(s, i, "**Music skipped.**")
 	}
 }
@@ -351,6 +358,7 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 		}
 	}
 
+	// if the same song is not in the queue, remove the music
 	if !isDupilcated {
 		RemoveMusic(musicId)
 	}
@@ -361,20 +369,24 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 }
 
 func getJoinedVoiceChannel(s *discordgo.Session, guildID, userID string) string {
+	// Get the voice state of the user
 	guild, err := s.State.Guild(guildID)
 	if err != nil {
 		Log.Warn.Printf("[MusicBot] Failed to get guild: %v", err)
 		return ""
 	}
 
+	// loop through the voice states to find the user's voice state
 	for _, v := range guild.VoiceStates {
 		Log.Verbose.Printf("[MusicBot] VC_STATE => C:%s, U:%s", v.ChannelID, v.UserID)
 		if v.UserID != userID {
 			continue
 		}
 
+		// Return the channel ID if the user is in a voice channel
 		return v.ChannelID
 	}
 
+	// if the user is not in a voice channel
 	return ""
 }
