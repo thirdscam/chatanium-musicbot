@@ -78,8 +78,10 @@ type state struct {
 	skip  chan bool
 }
 
-var musicQueue map[string]state = make(map[string]state)
+// The queue of the music for each channel
+var channels map[string]state = make(map[string]state)
 
+// The providers of the music (youtube, etc.)
 var providers map[string]Provider.Interface = make(map[string]Provider.Interface)
 
 func Start() {
@@ -120,7 +122,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Get the music
-	m, err := provider.GetByQuery(query)
+	m, err := provider.GetMusic(query)
 	if err != nil {
 		Log.Verbose.Printf("[MusicBot] Failed to query music: %s", err)
 		util.EditResponse(s, i, "**Failed to query music.**\nPlease try again or input another query.")
@@ -158,17 +160,17 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	<-isReady // wait for the first music to be downloaded
 
 	// Add the music to the queue
-	if _, ok := musicQueue[channelID]; !ok {
-		musicQueue[channelID] = state{
+	if _, ok := channels[channelID]; !ok {
+		channels[channelID] = state{
 			queue: []Provider.Music{},
-			pause: musicQueue[channelID].pause,
-			skip:  musicQueue[channelID].skip,
+			pause: channels[channelID].pause,
+			skip:  channels[channelID].skip,
 		}
 	}
 
-	queueState := musicQueue[channelID]
+	queueState := channels[channelID]
 	queueState.queue = append(queueState.queue, m...)
-	musicQueue[channelID] = queueState
+	channels[channelID] = queueState
 
 	// Building the response message
 	var newRespMsg string
@@ -185,7 +187,7 @@ func Play(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	util.EditResponse(s, i, newRespMsg)
 
 	// Play the music
-	if len(musicQueue[channelID].queue) <= 1 {
+	if len(channels[channelID].queue) <= 1 {
 		playMusic(s, dgv)
 	}
 }
@@ -213,24 +215,24 @@ func Dequeue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Check if the queue is empty
-	if _, ok := musicQueue[channelID]; !ok {
+	if _, ok := channels[channelID]; !ok {
 		util.EphemeralResponse(s, i, "**Cannot find queue!**\nPlease play a song first.")
 		return
 	}
 
 	// Check if index is out of queue length
-	if index >= int64(len(musicQueue[channelID].queue)) {
-		util.EphemeralResponse(s, i, fmt.Sprintf("**Invalid index!** (Queue Length: %d)", len(musicQueue[channelID].queue)))
+	if index >= int64(len(channels[channelID].queue)) {
+		util.EphemeralResponse(s, i, fmt.Sprintf("**Invalid index!** (Queue Length: %d)", len(channels[channelID].queue)))
 		return
 	}
 
 	// Send a message to the channel
-	util.EphemeralResponse(s, i, fmt.Sprintf("Removing: **#%d** - %s", index, musicQueue[channelID].queue[index].Title))
+	util.EphemeralResponse(s, i, fmt.Sprintf("Removing: **#%d** - %s", index, channels[channelID].queue[index].Title))
 
 	// Remove the music from the queue
-	queueState := musicQueue[channelID]
+	queueState := channels[channelID]
 	queueState.queue = append(queueState.queue[:index], queueState.queue[index+1:]...)
-	musicQueue[channelID] = queueState
+	channels[channelID] = queueState
 }
 
 func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -241,14 +243,14 @@ func Queue(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Check if the queue is not created or empty
-	if _, ok := musicQueue[channelID]; !ok || len(musicQueue[channelID].queue) == 0 {
+	if _, ok := channels[channelID]; !ok || len(channels[channelID].queue) == 0 {
 		util.EphemeralResponse(s, i, "**Queue is empty!**\nPlease play a song first.")
 		return
 	}
 
 	// Create a message to send
-	queueMessage := fmt.Sprintf("**Now Playing: %s**\n\nQueue:\n", musicQueue[channelID].queue[0])
-	for i, music := range musicQueue[channelID].queue {
+	queueMessage := fmt.Sprintf("**Now Playing: %s**\n\nQueue:\n", channels[channelID].queue[0])
+	for i, music := range channels[channelID].queue {
 		if i == 0 { // if the music is the currently playing music
 			continue
 		}
@@ -271,7 +273,7 @@ func Pause(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	completed := make(chan bool) // check the thread is completed
 	go func() {
 		// Send pause/resume command to the music player thread
-		musicQueue[channelID].pause <- true
+		channels[channelID].pause <- true
 
 		// Wait for the music player control finishes
 		completed <- true
@@ -298,7 +300,7 @@ func Skip(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	completed := make(chan bool)
 	go func() {
 		// Send skip command to the music player thread
-		musicQueue[channelID].skip <- true
+		channels[channelID].skip <- true
 
 		// Wait for the music player control finishes
 		completed <- true
@@ -316,7 +318,7 @@ func Skip(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 	// Check if the queue is empty
-	if len(musicQueue[dgv.ChannelID].queue) == 0 {
+	if len(channels[dgv.ChannelID].queue) == 0 {
 		err := dgv.Disconnect()
 		if err != nil {
 			Log.Warn.Printf("[MusicBot] Failed to disconnect from voice channel: %v", err)
@@ -328,30 +330,30 @@ func playMusic(s *discordgo.Session, dgv *discordgo.VoiceConnection) {
 
 	// Set a message to the channel
 	SetStatusEmbed(s, dgv.ChannelID, EmbedState{
-		Title:        musicQueue[dgv.ChannelID].queue[0].Title,
-		ThumbnailUrl: musicQueue[dgv.ChannelID].queue[0].RawUrl,
+		Title:        channels[dgv.ChannelID].queue[0].Title,
+		ThumbnailUrl: channels[dgv.ChannelID].queue[0].RawUrl,
 	})
 
 	// Get the music ID
-	musicId := MusicID(musicQueue[dgv.ChannelID].queue[0].Id)
+	musicId := MusicID(channels[dgv.ChannelID].queue[0].Id)
 
 	// Get the music queue state
-	queueState := musicQueue[dgv.ChannelID]
+	queueState := channels[dgv.ChannelID]
 	queueState.pause = make(chan bool)
 	queueState.skip = make(chan bool)
-	musicQueue[dgv.ChannelID] = queueState
+	channels[dgv.ChannelID] = queueState
 
 	// Start playing the music
 	Log.Verbose.Printf("[MusicBot] Started!")
 	PlayMusic(dgv, musicId, queueState.pause, queueState.skip)
 
 	// Remove the first element from the queue
-	queueState.queue = musicQueue[dgv.ChannelID].queue[1:]
-	musicQueue[dgv.ChannelID] = queueState
+	queueState.queue = channels[dgv.ChannelID].queue[1:]
+	channels[dgv.ChannelID] = queueState
 
 	// Ignore removing songs after scanning if the same song is in the queue
 	isDupilcated := false
-	for _, each := range musicQueue[dgv.ChannelID].queue {
+	for _, each := range channels[dgv.ChannelID].queue {
 		if MusicID(each.Id) == musicId {
 			isDupilcated = true
 			break

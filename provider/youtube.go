@@ -63,7 +63,7 @@ func (y *Youtube) Start() {
 	}()
 }
 
-func (y *Youtube) GetByQuery(query string) ([]Music, error) {
+func (y *Youtube) GetMusic(query string) ([]Music, error) {
 	// check if the query is a playlist or video URL
 	if util.IsYoutubeUrl(query) {
 		Log.Verbose.Printf("[MusicBot] Query is a URL: %s", query)

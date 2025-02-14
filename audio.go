@@ -15,6 +15,8 @@ import (
 
 const MUSIC_PATH = "./.musicbot"
 
+var ErrSkipped = errors.New("the song is skipped")
+
 // MusicID is a unique identifier for a music.
 // It is used to download file name as MusicID.
 //
@@ -74,7 +76,7 @@ func RemoveMusic(musicId MusicID) {
 //
 // It returns an error if the music file is not found.
 // so it must be checked before called DownloadMusic().
-func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool, stop chan bool) error {
+func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool, skip chan bool) error {
 	// Open the music file
 	file, err := os.Open(getMusicPath(musicId))
 	if err != nil {
@@ -87,13 +89,14 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool,
 	decoder := dca.NewDecoder(file)
 
 	// Start streaming the audio to the voice connection
-	done := make(chan error)
-	stream := dca.NewStream(decoder, dgv, done)
+	stop := make(chan error)
+	stream := dca.NewStream(decoder, dgv, stop)
 
 	// Variable to keep track of the pause state
 	isPaused := false
 
 	// Make thread of the music player
+	finish := make(chan bool)
 	go func() {
 		for {
 			// Awaiting control signals (pause, stop, etc.)
@@ -110,13 +113,9 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool,
 					Log.Verbose.Println("[MusicBot] Music resumed")
 				}
 
-			// done signal to stop the music player
-			case err := <-done:
-				// TODO(refactor): simplify this code (not use else if statement)
-				// Handle end of stream or errors
-				if errors.Is(err, io.EOF) {
-					Log.Verbose.Println("[MusicBot] Playback finished")
-				} else if errors.Is(err, dca.ErrVoiceConnClosed) {
+			// stop signal to stop the music player
+			case err := <-stop:
+				if errors.Is(err, dca.ErrVoiceConnClosed) {
 					Log.Warn.Println("[MusicBot] Voice connection closed. trying to reconnect...")
 
 					// For unknown reasons, the channel's voice connection sometimes closes.
@@ -124,25 +123,39 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool,
 					stream.SetPaused(true)
 					time.Sleep(2 * time.Second)
 					stream.SetPaused(false)
-
-					// continue to wait for the next signal (resume the music)
 					continue
-				} else if err != nil {
-					Log.Error.Printf("[MusicBot] Stream error: %v", err)
 				}
-				return
 
-			case <-stop:
+				if errors.Is(err, io.EOF) {
+					Log.Verbose.Println("[MusicBot] Playback finished")
+					<-finish
+					break
+				}
+
+				if errors.Is(err, ErrSkipped) {
+					Log.Verbose.Println("[MusicBot] Playback skipped")
+					<-finish
+					break
+				}
+
+				if err != nil {
+					Log.Error.Printf("[MusicBot] Stream error: %v", err)
+					<-finish
+					break
+				}
+
+				Log.Warn.Println("[MusicBot] Stop signal received, but error is nil")
+
+			case <-skip:
 				stream.SetPaused(true) // Pause the stream
-				Log.Verbose.Println("[MusicBot] Playback stopped. (skipped)")
-				done <- io.EOF // Send EOF to indicate the end of stream
+				stop <- ErrSkipped     // Send SKIP error to stop the stream
 				return
 			}
 		}
 	}()
 
 	// Wait until streaming is done
-	<-done
+	<-finish
 
 	Log.Verbose.Println("[MusicBot] Playback ended.")
 	return nil
@@ -233,70 +246,3 @@ func download(rawURL string, file *os.File) (chan bool, error) {
 
 	return isWriting, nil
 }
-
-// func download(file *os.File, url string) (chan bool, error) {
-// 	// 1. Create a shell command "object" to run.
-// 	run := exec.Command(
-// 		"ffmpeg",
-// 		"-i", url,
-// 		"-f", "s16le",
-// 		"-reconnect", "1",
-// 		"-reconnect_at_eof", "1",
-// 		"-reconnect_streamed", "1",
-// 		"-reconnect_delay_max", "3",
-// 		"-vn",
-// 		"-ar", strconv.Itoa(frameRate),
-// 		"-ac", strconv.Itoa(channels),
-// 		"-blocksize", "8192",
-// 		"pipe:1")
-// 	ffmpegout, err := run.StdoutPipe()
-// 	if err != nil {
-// 		Log.Verbose.Printf("[MusicBot/Internal] StdoutPipe Error: %v", err)
-// 		return nil, err
-// 	}
-
-// 	// 1-1. prevent memory leak from residual ffmpeg streams
-// 	defer run.Process.Kill()
-
-// 	// 2. create buffer to read ffmpeg output and write to file
-// 	ffmpegReader := bufio.NewReaderSize(ffmpegout, 16384)
-// 	fileWriter := bufio.NewWriter(file)
-
-// 	// 3. Starts the ffmpeg command
-// 	err = run.Start()
-// 	if err != nil {
-// 		Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Start Error: %v", err)
-// 		return nil, err
-// 	}
-
-// 	isWriting := make(chan bool)
-
-// 	// 4. read ffmpeg buffer and write to file
-// 	go func() {
-// 		isFirstWritten := false
-// 		for {
-// 			buf := make([]byte, 4096)
-// 			n, err := ffmpegReader.Read(buf)
-// 			if err != nil {
-// 				if err == io.EOF {
-// 					return
-// 				}
-// 				Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Read Error: %v", err)
-// 				return
-// 			}
-// 			_, err = fileWriter.Write(buf[:n])
-// 			if err != nil {
-// 				Log.Verbose.Printf("[MusicBot/Internal] ffmpeg Write Error: %v", err)
-// 				return
-// 			}
-
-// 			// if the first write is done, send the signal to the channel
-// 			if !isFirstWritten {
-// 				isWriting <- true
-// 				isFirstWritten = true
-// 			}
-// 		}
-// 	}()
-
-// 	return isWriting, nil
-// }
