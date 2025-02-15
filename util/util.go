@@ -8,6 +8,7 @@ import (
 	Url "net/url"
 	"os"
 	"path"
+	"sync"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/thirdscam/chatanium/src/Util/Log"
@@ -75,4 +76,16 @@ func EditResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content 
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: &content,
 	})
+}
+
+func WithLock(mu *sync.Mutex, fn func()) {
+	mu.Lock()
+	defer mu.Unlock()
+	fn()
+}
+
+func WithRLock(mu *sync.RWMutex, fn func()) {
+	mu.RLock()
+	defer mu.RUnlock()
+	fn()
 }

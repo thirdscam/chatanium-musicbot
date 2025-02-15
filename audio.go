@@ -10,6 +10,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/jogramming/dca"
+	Provider "github.com/thirdscam/chatanium-musicbot/provider"
 	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
@@ -17,16 +18,10 @@ const MUSIC_PATH = "./.musicbot"
 
 var ErrSkipped = errors.New("the song is skipped")
 
-// MusicID is a unique identifier for a music.
-// It is used to download file name as MusicID.
-//
-// recommended to use hash of the URL as key.
-type MusicID string
-
 // DownloadMusic() downloads the music from the given URL and returns the path to the downloaded file.
 //
 // key is used to generate the file name, so it must be unique.
-func DownloadMusic(rawURL string, musicId MusicID) error {
+func DownloadMusic(rawURL string, musicId Provider.MusicID) error {
 	// 1. check if the music file already exists.
 	if isExistMusic(musicId) {
 		return nil
@@ -65,7 +60,7 @@ func DownloadMusic(rawURL string, musicId MusicID) error {
 // Remove music from the local storage.
 //
 // use it when the music file is no longer needed.
-func RemoveMusic(musicId MusicID) {
+func RemoveMusic(musicId Provider.MusicID) {
 	err := os.Remove(getMusicPath(musicId))
 	if err != nil {
 		Log.Error.Printf("[MusicBot] Failed to remove file: %v", err)
@@ -76,7 +71,7 @@ func RemoveMusic(musicId MusicID) {
 //
 // It returns an error if the music file is not found.
 // so it must be checked before called DownloadMusic().
-func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool, skip chan bool) error {
+func PlayMusic(dgv *discordgo.VoiceConnection, musicId Provider.MusicID, pause chan bool, skip chan bool) error {
 	// Open the music file
 	file, err := os.Open(getMusicPath(musicId))
 	if err != nil {
@@ -128,27 +123,23 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId MusicID, pause chan bool,
 
 				if errors.Is(err, io.EOF) {
 					Log.Verbose.Println("[MusicBot] Playback finished")
-					<-finish
-					break
-				}
-
-				if errors.Is(err, ErrSkipped) {
-					Log.Verbose.Println("[MusicBot] Playback skipped")
-					<-finish
-					break
+					finish <- true
+					return
 				}
 
 				if err != nil {
 					Log.Error.Printf("[MusicBot] Stream error: %v", err)
-					<-finish
-					break
+					finish <- true
+					return
 				}
 
 				Log.Warn.Println("[MusicBot] Stop signal received, but error is nil")
+				return
 
 			case <-skip:
 				stream.SetPaused(true) // Pause the stream
-				stop <- ErrSkipped     // Send SKIP error to stop the stream
+				Log.Verbose.Println("[MusicBot] Playback skipped")
+				finish <- true
 				return
 			}
 		}
@@ -175,12 +166,12 @@ func makeDirectory() error {
 }
 
 // get music file path from MUSIC_PATH.
-func getMusicPath(musicId MusicID) string {
+func getMusicPath(musicId Provider.MusicID) string {
 	return MUSIC_PATH + "/" + string(musicId)
 }
 
 // check if the music file exists.
-func isExistMusic(musicId MusicID) bool {
+func isExistMusic(musicId Provider.MusicID) bool {
 	path := MUSIC_PATH + "/" + string(musicId)
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {

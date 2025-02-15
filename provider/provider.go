@@ -1,7 +1,13 @@
 package Provider
 
+// MusicID is a unique identifier for a music.
+// It is used to download file name as MusicID.
+//
+// recommended to use hash of the URL as key.
+type MusicID string
+
 type Music struct {
-	Id     string // unique identifier for the music
+	Id     MusicID // unique identifier for the music
 	Title  string
 	RawUrl string
 	Type   string

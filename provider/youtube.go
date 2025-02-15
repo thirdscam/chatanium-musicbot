@@ -76,7 +76,7 @@ func (y *Youtube) GetMusic(query string) ([]Music, error) {
 }
 
 func getSearch(query string) ([]Music, error) {
-	exec := exec.Command(util.GetYtdlpPath(), fmt.Sprintf("ytsearch:'%s (Lyrics)'", query), "--quiet", "--no-warnings", "--skip-download", "--format=bestaudio/best", "-O", "id,title,url,thumbnail")
+	exec := exec.Command(util.GetYtdlpPath(), fmt.Sprintf("ytsearch:'%s'", query), "--quiet", "--no-warnings", "--skip-download", "--format=bestaudio/best", "-O", "id,title,url,thumbnail")
 	r, err := exec.Output()
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func getSearch(query string) ([]Music, error) {
 
 	return []Music{
 		{
-			Id:           "YT:" + util.GetSha256Hash(result[0]),
+			Id:           MusicID("YT:" + util.GetSha256Hash(result[0])),
 			Title:        result[1],
 			RawUrl:       result[2],
 			ThumbnailUrl: result[3],
@@ -133,7 +133,7 @@ func getUrl(url string) ([]Music, error) {
 		}
 
 		result = append(result, Music{
-			Id:           "YT:" + util.GetSha256Hash(execResult[i]),
+			Id:           MusicID("YT:" + util.GetSha256Hash(execResult[i])),
 			Title:        execResult[i+1],
 			RawUrl:       execResult[i+2],
 			ThumbnailUrl: execResult[i+3],
