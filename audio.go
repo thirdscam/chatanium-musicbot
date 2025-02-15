@@ -71,12 +71,12 @@ func RemoveMusic(musicId Provider.MusicID) {
 //
 // It returns an error if the music file is not found.
 // so it must be checked before called DownloadMusic().
-func PlayMusic(dgv *discordgo.VoiceConnection, musicId Provider.MusicID, pause chan bool, skip chan bool) error {
+func PlayMusic(dgv *discordgo.VoiceConnection, musicId Provider.MusicID, pause chan bool, skip chan bool) {
 	// Open the music file
 	file, err := os.Open(getMusicPath(musicId))
 	if err != nil {
 		Log.Error.Printf("[MusicBot] Failed to open file: %v", err)
-		return err
+		return
 	}
 	defer file.Close()
 
@@ -90,66 +90,55 @@ func PlayMusic(dgv *discordgo.VoiceConnection, musicId Provider.MusicID, pause c
 	// Variable to keep track of the pause state
 	isPaused := false
 
-	// Make thread of the music player
-	finish := make(chan bool)
-	go func() {
-		for {
-			// Awaiting control signals (pause, stop, etc.)
-			select {
+playback:
+	for {
+		// Awaiting control signals (pause, stop, etc.)
+		select {
 
-			// pause signal actually toggle the pause state (can be paused/resumed)
-			case <-pause:
-				// Toggle the pause state
-				isPaused = !isPaused
-				stream.SetPaused(isPaused)
-				if isPaused {
-					Log.Verbose.Println("[MusicBot] Music paused")
-				} else {
-					Log.Verbose.Println("[MusicBot] Music resumed")
-				}
-
-			// stop signal to stop the music player
-			case err := <-stop:
-				if errors.Is(err, dca.ErrVoiceConnClosed) {
-					Log.Warn.Println("[MusicBot] Voice connection closed. trying to reconnect...")
-
-					// For unknown reasons, the channel's voice connection sometimes closes.
-					// However, it will reconnect automatically after a few seconds, so wait about 2 seconds.
-					stream.SetPaused(true)
-					time.Sleep(2 * time.Second)
-					stream.SetPaused(false)
-					continue
-				}
-
-				if errors.Is(err, io.EOF) {
-					Log.Verbose.Println("[MusicBot] Playback finished")
-					finish <- true
-					return
-				}
-
-				if err != nil {
-					Log.Error.Printf("[MusicBot] Stream error: %v", err)
-					finish <- true
-					return
-				}
-
-				Log.Warn.Println("[MusicBot] Stop signal received, but error is nil")
-				return
-
-			case <-skip:
-				stream.SetPaused(true) // Pause the stream
-				Log.Verbose.Println("[MusicBot] Playback skipped")
-				finish <- true
-				return
+		// pause signal actually toggle the pause state (can be paused/resumed)
+		case <-pause:
+			// Toggle the pause state
+			isPaused = !isPaused
+			stream.SetPaused(isPaused)
+			if isPaused {
+				Log.Verbose.Println("[MusicBot] Music paused")
+			} else {
+				Log.Verbose.Println("[MusicBot] Music resumed")
 			}
-		}
-	}()
 
-	// Wait until streaming is done
-	<-finish
+		// stop signal to stop the music player
+		case err := <-stop:
+			if errors.Is(err, dca.ErrVoiceConnClosed) {
+				Log.Warn.Println("[MusicBot] Voice connection closed. trying to reconnect...")
+
+				// For unknown reasons, the channel's voice connection sometimes closes.
+				// However, it will reconnect automatically after a few seconds, so wait about 2 seconds.
+				stream.SetPaused(true)
+				time.Sleep(2 * time.Second)
+				stream.SetPaused(false)
+				continue
+			}
+
+			if errors.Is(err, io.EOF) {
+				Log.Verbose.Println("[MusicBot] Playback finished")
+				break playback
+			}
+
+			if err != nil {
+				Log.Error.Printf("[MusicBot] Stream error: %v", err)
+				break playback
+			}
+
+			Log.Warn.Println("[MusicBot] Stop signal received, but error is nil")
+
+		case <-skip:
+			stream.SetPaused(true) // Pause the stream
+			Log.Verbose.Println("[MusicBot] Playback skipped")
+			break playback
+		}
+	}
 
 	Log.Verbose.Println("[MusicBot] Playback ended.")
-	return nil
 }
 
 // make directory from MUSIC_PATH.
@@ -227,7 +216,7 @@ func download(rawURL string, file *os.File) (chan bool, error) {
 
 			// if the first write is done, send the signal to the channel
 			if chunkCnt == 5 {
-				Log.Verbose.Printf("[MusicBot/Internal] Buffer Received.")
+				Log.Verbose.Printf("[MusicBot/Internal] ready to play.")
 				isWriting <- true
 			}
 
