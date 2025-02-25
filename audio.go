@@ -6,6 +6,7 @@ import (
 	"io"
 	Url "net/url"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -14,9 +15,7 @@ import (
 	"github.com/thirdscam/chatanium/src/Util/Log"
 )
 
-const MUSIC_PATH = "./.musicbot"
-
-var ErrSkipped = errors.New("the song is skipped")
+var MUSIC_PATH = filepath.Join(os.TempDir(), "chatanium-musicbot")
 
 // DownloadMusic() downloads the music from the given URL and returns the path to the downloaded file.
 //
@@ -141,6 +140,19 @@ playback:
 	Log.Verbose.Println("[MusicBot] Playback ended.")
 }
 
+func reconnect(dgv *discordgo.VoiceConnection) chan bool {
+	// Wait for the voice connection to be closed
+	for {
+		if dgv.Ready == false {
+			Log.Warn.Println("[MusicBot] Voice connection closed. trying to reconnect...")
+			dgv.Disconnect()
+			time.Sleep(1 * time.Second)
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+}
+
 // make directory from MUSIC_PATH.
 // if it doesn't exist, create it.
 func makeDirectory() error {
@@ -156,13 +168,12 @@ func makeDirectory() error {
 
 // get music file path from MUSIC_PATH.
 func getMusicPath(musicId Provider.MusicID) string {
-	return MUSIC_PATH + "/" + string(musicId)
+	return filepath.Join(MUSIC_PATH, string(musicId))
 }
 
 // check if the music file exists.
 func isExistMusic(musicId Provider.MusicID) bool {
-	path := MUSIC_PATH + "/" + string(musicId)
-	_, err := os.Stat(path)
+	_, err := os.Stat(getMusicPath(musicId))
 	if os.IsNotExist(err) {
 		return false
 	} else if err != nil {
